@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Speed Reader</title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: sans-serif;
+      background: #f5f5f5;
+      color: #222;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* ── View toggle ── */
+    .hidden { display: none !important; }
+
+    /* ── Shared container ── */
+    .view {
+      width: 100%;
+      max-width: 720px;
+      padding: 2rem;
+    }
+
+    /* ════════════════════════════════
+       Input View
+    ════════════════════════════════ */
+    #input-view {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    #input-view h1 {
+      font-size: 1.6rem;
+      font-weight: 600;
+    }
+
+    #text-input {
+      width: 100%;
+      height: 220px;
+      padding: 0.75rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      resize: vertical;
+      background: #fff;
+    }
+
+    /* Shared focus ring */
+    .focus-ring:focus {
+      outline: 2px solid #4a90e2;
+      border-color: transparent;
+    }
+
+
+    #start-btn {
+      align-self: flex-start;
+    }
+
+    #error-msg {
+      color: #c0392b;
+      font-size: 0.9rem;
+      min-height: 1.2em;
+    }
+
+    /* ════════════════════════════════
+       Reader View
+    ════════════════════════════════ */
+    #reader-view {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* Word display */
+    #word-display {
+      font-size: 3.5rem;
+      font-weight: 700;
+      text-align: center;
+      min-height: 5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+      border-radius: 8px;
+      padding: 1rem 2rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      letter-spacing: 0.02em;
+      user-select: none;
+    }
+
+    /* Source highlight display */
+    #source-display {
+      white-space: pre-wrap;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 1rem;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    #source-display span {
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    #source-display span:hover {
+      background: #e8f0fb;
+    }
+
+    /* Active word highlight */
+    #source-display span.active {
+      background: #ffd54f;
+      color: #111;
+    }
+
+    /* Progress scrubber */
+    #scrubber {
+      width: 100%;
+      cursor: pointer;
+      accent-color: #4a90e2;
+      height: 6px;
+    }
+
+    /* Controls bar */
+    #controls-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      padding: 0.45rem 0.9rem;
+      font-size: 1rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      background: #fff;
+      color: inherit;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn:hover { background: #e8f0fb; }
+
+    .btn-primary {
+      background: #4a90e2;
+      color: #fff;
+      border-color: #4a90e2;
+    }
+
+    .btn-primary:hover { background: #357abd; }
+
+    .btn-danger {
+      color: #c0392b;
+      border-color: #c0392b;
+    }
+
+    .btn-danger:hover { background: #fdecea; }
+
+
+    /* Shared small input/select sizing */
+    .ctrl-input {
+      padding: 0.45rem 0.5rem;
+      font-size: 0.95rem;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+    }
+
+    /* WPM input */
+    #wpm-input {
+      width: 5rem;
+      text-align: center;
+    }
+
+    /* Font selector */
+    #font-select {
+      background: #fff;
+      cursor: pointer;
+    }
+
+    /* Reset button — pushed to the right */
+    #reset-btn { margin-left: auto; }
+
+    #play-pause-btn { min-width: 5rem; }
+
+    /* WPM label */
+    .ctrl-label {
+      font-size: 0.85rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ══════════════════════════════
+       Input View
+  ══════════════════════════════ -->
+  <section id="input-view" class="view">
+    <h1>Speed Reader</h1>
+    <textarea
+      id="text-input"
+      class="focus-ring"
+      placeholder="Paste your text here…"
+      aria-label="Text to read"
+    ></textarea>
+    <button id="start-btn" class="btn btn-primary" type="button">Start</button>
+    <p id="error-msg" role="alert" aria-live="polite"></p>
+  </section>
+
+  <!-- ══════════════════════════════
+       Reader View (hidden by default)
+  ══════════════════════════════ -->
+  <section id="reader-view" class="view hidden">
+
+    <!-- Large word display -->
+    <div id="word-display" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Progress scrubber -->
+    <input
+      id="scrubber"
+      type="range"
+      min="0"
+      value="0"
+      aria-label="Reading progress"
+    >
+
+    <!-- Controls bar -->
+    <div id="controls-bar" role="toolbar" aria-label="Playback controls">
+      <button id="back-btn"       class="btn" type="button" title="Back one word (←)">◀</button>
+      <button id="play-pause-btn" class="btn btn-primary" type="button" title="Play / Pause (Space)">▶ Play</button>
+      <button id="forward-btn"    class="btn" type="button" title="Forward one word (→)">▶▶</button>
+
+      <label class="ctrl-label" for="wpm-input">WPM</label>
+      <input
+        id="wpm-input"
+        class="ctrl-input focus-ring"
+        type="number"
+        value="200"
+        aria-label="Words per minute"
+      >
+
+      <label class="ctrl-label" for="font-select">Font</label>
+      <select id="font-select" class="ctrl-input focus-ring" aria-label="Font style"></select>
+
+      <button id="reset-btn" class="btn btn-danger" type="button" title="Return to input">↩ Reset</button>
+    </div>
+
+    <!-- Source text with per-word spans (populated by JS) -->
+    <div id="source-display" aria-label="Source text"></div>
+
+  </section>
+
+  <script>
+    // ── PreferenceManager ─────────────────────────────────────
+    const PreferenceManager = {
+      PREFS: {
+        WPM: {
+          key:     'speedreader.wpm',
+          default: 200,
+          min:     60,
+          max:     1000,
+        },
+        FONT: {
+          key:     'speedreader.font',
+          default: 'sans-serif',
+          values:  ['sans-serif', 'serif', 'monospace'],
+        },
+      },
+
+      save(descriptor, value) {
+        try {
+          localStorage.setItem(descriptor.key, String(value));
+        } catch (e) {
+          console.error('Failed to save preference:', e);
+        }
+      },
+
+      load(descriptor) {
+        try {
+          const raw = localStorage.getItem(descriptor.key);
+          if (raw === null) return descriptor.default;
+          if ('min' in descriptor && 'max' in descriptor) {
+            const parsed = parseInt(raw, 10);
+            return (parsed >= descriptor.min && parsed <= descriptor.max)
+              ? parsed
+              : descriptor.default;
+          }
+          if ('values' in descriptor) {
+            return descriptor.values.includes(raw) ? raw : descriptor.default;
+          }
+          return descriptor.default;
+        } catch (e) {
+          console.error('Failed to load preference:', e);
+          return descriptor.default;
+        }
+      },
+    };
+  </script>
+
+  <script>
+    // ── AppState ──────────────────────────────────────────────
+    const state = {
+      currentSpan: null,
+      spanIndex: 0,
+      isPlaying: false,
+      wpm: 200,
+      fontFamily: 'sans-serif',
+      timerId: null
+    };
+
+    // ── Validator ─────────────────────────────────────────────
+    function validate(text) {
+      return /\S/.test(text) ? null : { reason: 'empty' };
+    }
+
+    // ── DOM refs ──────────────────────────────────────────────
+    const startBtn  = document.getElementById('start-btn');
+    const textInput = document.getElementById('text-input');
+    const errorMsg  = document.getElementById('error-msg');
+
+    // ── Source Highlighter ────────────────────────────────────
+
+    /**
+     * buildHighlightView(text)
+     * Walks text once; creates a <span> per whitespace-delimited word and
+     * text nodes for whitespace/punctuation between words; appends all to
+     * the source display div.
+     * Returns { firstSpan, totalSpans }.
+     * Never uses innerHTML — only document.createElement, document.createTextNode,
+     * and textContent.
+     */
+    const sourceDisplay = document.getElementById('source-display');
+
+    // Module-level reference to the first span — needed by onScrubberChange
+    // and click-to-seek handlers to walk from the beginning.
+    let firstSpan = null;
+
+    function buildHighlightView(text) {
+      // Clear any previous content
+      sourceDisplay.replaceChildren();
+
+      // Split text into alternating word/non-word tokens.
+      // The regex captures both word tokens (\S+) and non-word tokens (\s+)
+      // so that the original text can be reconstructed exactly.
+      const tokens = text.split(/(\S+)/);
+
+      firstSpan = null;
+      let foundSpans = 0;
+
+      for (const token of tokens) {
+        if (token === '') continue;
+
+        if (/\S/.test(token)) {
+          // Word token — wrap in a <span>
+          const span = document.createElement('span');
+          span.textContent = token;
+          span.dataset.index = foundSpans; // store index at build time
+
+          sourceDisplay.appendChild(span);
+          if (firstSpan === null) firstSpan = span;
+          foundSpans++;
+        } else {
+          // Whitespace/punctuation between words — plain text node
+          sourceDisplay.appendChild(document.createTextNode(token));
+        }
+      }
+
+      return { firstSpan, foundSpans };
+    }
+
+    // ── Source Word Highlighting ──────────────────────────────
+
+    /**
+     * highlightWord(span)
+     * Removes 'active' class from the previously active span (if any),
+     * adds 'active' to the given span, and scrolls it into view.
+     */
+    let activeSpan = null;
+
+    function highlightWord(span) {
+      if (activeSpan !== null) {
+        activeSpan.classList.remove('active');
+      }
+      span.classList.add('active');
+      activeSpan = span;
+      span.scrollIntoView({ block: 'nearest' });
+    }
+
+    // ── Additional DOM refs ───────────────────────────────────
+    const scrubber     = document.getElementById('scrubber');
+    const wordDisplay  = document.getElementById('word-display');
+    const playPauseBtn = document.getElementById('play-pause-btn');
+
+    // Task 7.3: click-to-seek — single delegated listener for all word spans
+    sourceDisplay.addEventListener('click', function (e) {
+      const span = e.target.closest('span');
+      if (!span) return;
+      if (state.isPlaying) {
+        pause(state);
+      }
+      const idx = Number(span.dataset.index);
+      state.currentSpan = span;
+      state.spanIndex = idx;
+      renderWord(span.textContent);
+      highlightWord(span);
+      scrubber.value = idx;
+    });
+
+    // ── Word Display ──────────────────────────────────────────
+
+    /**
+     * renderWord(word)
+     * Sets the word display element's textContent to word.
+     * Never uses innerHTML.
+     */
+    function renderWord(word) {
+      wordDisplay.textContent = word;
+    }
+
+    /**
+     * setFont(fontFamily)
+     * Applies fontFamily to the word display element's style.
+     * Called only on font selector change — not on every word render.
+     */
+    function setFont(fontFamily) {
+      state.fontFamily = fontFamily;
+      wordDisplay.style.fontFamily = fontFamily;
+    }
+
+    // ── Playback Engine ───────────────────────────────────────
+
+    function setPlayPauseBtn(playing) {
+      playPauseBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+    }
+
+    /**
+     * pause(state)
+     * Clears any pending timer, marks playback as stopped.
+     */
+    function pause(state) {
+      clearTimeout(state.timerId);
+      state.timerId = null;
+      state.isPlaying = false;
+      setPlayPauseBtn(false);
+    }
+
+    /**
+     * play(state)
+     * Schedules automatic word advancement at 60000/wpm ms intervals.
+     * On each tick: walks to the next <span>, updates state, renders,
+     * highlights, and syncs the scrubber. Auto-pauses at the last word.
+     */
+    function play(state) {
+      state.isPlaying = true;
+      setPlayPauseBtn(true);
+      const delay = 60000 / state.wpm;
+
+      function tick() {
+        // Walk nextSibling until a <span> is found
+        let next = state.currentSpan.nextSibling;
+        while (next !== null && next.tagName !== 'SPAN') {
+          next = next.nextSibling;
+        }
+
+        if (next === null) {
+          // Reached the last word — auto-pause
+          pause(state);
+          return;
+        }
+
+        // Advance state
+        state.currentSpan = next;
+        state.spanIndex++;
+
+        // Sync display, highlight, scrubber
+        renderWord(state.currentSpan.textContent);
+        highlightWord(state.currentSpan);
+        scrubber.value = state.spanIndex;
+
+        // Schedule next tick
+        state.timerId = setTimeout(tick, 60000 / state.wpm);
+      }
+
+      state.timerId = setTimeout(tick, delay);
+    }
+
+    /**
+     * stepForward(state)
+     * Advances one word manually. No-op at the last span.
+     * After stepping: renders, highlights, syncs scrubber.
+     */
+    function stepForward(state) {
+      let next = state.currentSpan.nextSibling;
+      while (next !== null && next.tagName !== 'SPAN') {
+        next = next.nextSibling;
+      }
+      if (next === null) return; // already at last word
+
+      state.currentSpan = next;
+      state.spanIndex++;
+
+      renderWord(state.currentSpan.textContent);
+      highlightWord(state.currentSpan);
+      scrubber.value = state.spanIndex;
+    }
+
+    /**
+     * stepBack(state)
+     * Retreats one word manually. No-op at the first span.
+     * After stepping: renders, highlights, syncs scrubber.
+     */
+    function stepBack(state) {
+      let prev = state.currentSpan.previousSibling;
+      while (prev !== null && prev.tagName !== 'SPAN') {
+        prev = prev.previousSibling;
+      }
+      if (prev === null) return; // already at first word
+
+      state.currentSpan = prev;
+      state.spanIndex--;
+
+      renderWord(state.currentSpan.textContent);
+      highlightWord(state.currentSpan);
+      scrubber.value = state.spanIndex;
+    }
+
+    // ── WPM input ─────────────────────────────────────────────
+    const wpmInput = document.getElementById('wpm-input');
+    wpmInput.addEventListener('change', function () {
+      const clamped = Math.min(1000, Math.max(60, Number(wpmInput.value)));
+      state.wpm = clamped;
+      wpmInput.value = clamped;
+      PreferenceManager.save(PreferenceManager.PREFS.WPM, clamped);
+    });
+
+    // ── Font selector ─────────────────────────────────────────
+    const fontSelect = document.getElementById('font-select');
+    fontSelect.addEventListener('change', function () {
+      setFont(fontSelect.value);
+      PreferenceManager.save(PreferenceManager.PREFS.FONT, fontSelect.value);
+    });
+
+    // ── Restore saved preferences ─────────────────────────────
+    // Populate font select options from descriptor
+    PreferenceManager.PREFS.FONT.values.forEach(function(font) {
+      const opt = document.createElement('option');
+      opt.value = font;
+      opt.textContent = font.charAt(0).toUpperCase() + font.slice(1);
+      fontSelect.appendChild(opt);
+    });
+
+    // Set WPM input bounds from descriptor
+    wpmInput.min = PreferenceManager.PREFS.WPM.min;
+    wpmInput.max = PreferenceManager.PREFS.WPM.max;
+
+    const savedWpm = PreferenceManager.load(PreferenceManager.PREFS.WPM);
+    wpmInput.value = savedWpm;
+    state.wpm = savedWpm;
+
+    const savedFont = PreferenceManager.load(PreferenceManager.PREFS.FONT);
+    fontSelect.value = savedFont;
+    wordDisplay.style.fontFamily = savedFont;
+
+    // ── Progress Scrubber ─────────────────────────────────────
+
+    /**
+     * onScrubberChange
+     * Pauses playback, walks the DOM from firstSpan to the index indicated
+     * by scrubber.value, updates state, renders and highlights the word,
+     * then unconditionally blurs the scrubber so it never captures arrow keys.
+     */
+    function onScrubberChange() {
+      // Pause if playing
+      if (state.isPlaying) {
+        pause(state);
+      }
+
+      const targetIndex = Number(scrubber.value);
+
+      // Walk from firstSpan to the target index
+      let cursor = firstSpan;
+      for (let i = 0; i < targetIndex; i++) {
+        let sib = cursor.nextSibling;
+        while (sib !== null && sib.tagName !== 'SPAN') {
+          sib = sib.nextSibling;
+        }
+        if (sib === null) break; // safety: shouldn't happen within valid range
+        cursor = sib;
+      }
+
+      state.currentSpan = cursor;
+      state.spanIndex = targetIndex;
+      renderWord(cursor.textContent);
+      highlightWord(cursor);
+
+      // Always blur so the scrubber never captures ArrowLeft/ArrowRight
+      scrubber.blur();
+    }
+
+    scrubber.addEventListener('input', onScrubberChange);
+    scrubber.addEventListener('change', onScrubberChange);
+
+    // ── Keyboard shortcuts ────────────────────────────────────
+
+    /**
+     * onKeyDown(event)
+     * Handles Space (toggle play/pause), ArrowLeft (stepBack),
+     * ArrowRight (stepForward). Calls preventDefault for all three.
+     * Registered on document when entering reader mode; removed on reset.
+     */
+    function onKeyDown(event) {
+      if (event.key === ' ' || event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+      }
+      if (event.key === ' ') {
+        if (state.isPlaying) {
+          pause(state);
+        } else {
+          play(state);
+        }
+      } else if (event.key === 'ArrowLeft') {
+        stepBack(state);
+      } else if (event.key === 'ArrowRight') {
+        stepForward(state);
+      }
+    }
+
+    // ── Reset ─────────────────────────────────────────────────
+    function reset() {
+      pause(state);
+
+      // Clear source display
+      sourceDisplay.replaceChildren();
+
+      // Reset AppState fields
+      state.currentSpan = null;
+      state.spanIndex = 0;
+      state.isPlaying = false;
+      state.timerId = null;
+
+      // Reset active span tracking
+      activeSpan = null;
+
+      // Reset scrubber
+      scrubber.value = 0;
+
+      // Show Input_View, hide Reader_View
+      inputView.classList.remove('hidden');
+      readerView.classList.add('hidden');
+
+      // Remove keydown listener
+      document.removeEventListener('keydown', onKeyDown);
+    }
+
+    // ── Controls Bar wiring ───────────────────────────────────
+    const backBtn    = document.getElementById('back-btn');
+    const forwardBtn = document.getElementById('forward-btn');
+    const resetBtn   = document.getElementById('reset-btn');
+    const inputView  = document.getElementById('input-view');
+    const readerView = document.getElementById('reader-view');
+
+    backBtn.addEventListener('click', function () {
+      stepBack(state);
+    });
+
+    forwardBtn.addEventListener('click', function () {
+      stepForward(state);
+    });
+
+    playPauseBtn.addEventListener('click', function () {
+      if (state.isPlaying) {
+        pause(state);
+      } else {
+        play(state);
+      }
+    });
+
+    resetBtn.addEventListener('click', function () {
+      reset();
+    });
+
+    // ── Start button ──────────────────────────────────────────
+    startBtn.addEventListener('click', function () {
+      const text = textInput.value;
+      const error = validate(text);
+      if (error) {
+        errorMsg.textContent = 'Please enter some text to read.';
+      } else {
+        errorMsg.textContent = '';
+        // Enter reader mode
+        const { firstSpan: first, totalSpans } = buildHighlightView(text);
+        state.currentSpan = first;
+        state.spanIndex = 0;
+        scrubber.max = totalSpans - 1;
+        renderWord(first.textContent);
+        highlightWord(first);
+        inputView.classList.add('hidden');
+        readerView.classList.remove('hidden');
+        document.addEventListener('keydown', onKeyDown);
+        play(state);
+      }
+    });
+  </script>
+
+</body>
+</html>
